@@ -1,4 +1,6 @@
-use hackathon::{parse, print, print_unformatted, value::Value};
+use std::env;
+
+use hackathon::{compare_against_c, parse, print, print_unformatted, value::Value};
 
 #[test]
 fn parses_objects_arrays_and_scalars() {
@@ -53,4 +55,42 @@ fn parses_literals_after_non_ascii_text() {
 #[test]
 fn rejects_non_json_whitespace() {
     assert!(parse("{\"a\":1\u{00A0},\"b\":2}").is_err());
+}
+
+#[test]
+fn compares_against_c_reference_from_an_external_cwd() {
+    let original_dir = env::current_dir().unwrap();
+    let temp_dir = env::temp_dir().join("hackathon-c-reference-check");
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    env::set_current_dir(&temp_dir).unwrap();
+    let result = compare_against_c(r#"{"a":[1,2,3]}"#);
+    env::set_current_dir(original_dir).unwrap();
+
+    assert!(
+        result.is_ok(),
+        "expected comparison to succeed, got {result:?}"
+    );
+    let _ = std::fs::remove_dir_all(temp_dir);
+}
+
+#[test]
+fn object_mutation_helpers_use_case_insensitive_lookup_by_default() {
+    let mut value = parse(r#"{"Name":1,"other":2}"#).unwrap();
+    assert!(value.replace_item_in_object("name", Value::Number(5.0)));
+    assert!(value.delete_item_from_object("OTHER"));
+    assert!(
+        matches!(value.get_object_item("Name"), Some(Value::Number(n)) if (*n - 5.0).abs() < f64::EPSILON)
+    );
+    assert!(value.get_object_item("other").is_none());
+}
+
+#[test]
+fn object_mutation_helpers_support_explicit_case_sensitive_lookup() {
+    let mut value = parse(r#"{"Name":1,"name":2}"#).unwrap();
+    assert!(value.replace_item_in_object_case_sensitive("name", Value::Number(9.0)));
+    assert!(
+        matches!(value.get_object_item_case_sensitive("name"), Some(Value::Number(n)) if (*n - 9.0).abs() < f64::EPSILON)
+    );
+    assert!(value.get_object_item_case_sensitive("Name").is_some());
 }

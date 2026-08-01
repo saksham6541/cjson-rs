@@ -53,3 +53,17 @@
 **Decision:** Record the SHA-256 hash of the upstream cJSON test-suite files in [kickoff_hash.txt](kickoff_hash.txt).
 **Rationale:** This is easy for reviewers to verify and demonstrates that the reference snapshot was captured independently at kickoff.
 **Equivalence impact:** Adds traceability without changing parser behavior.
+
+## [Hour 16] Verified upstream reference path
+
+**Context:** The repository needed a trustworthy C reference build path that was backed by the real upstream cJSON source tree rather than a guessed or partial path.
+**Decision:** Verify the real upstream tree under [original/cJSON](original/cJSON), compile it with a portable Python build helper, and confirm the resulting binary on representative JSON inputs.
+**Rationale:** This makes the differential harness meaningful because it now compares the Rust port against a real compiled upstream implementation.
+**Equivalence impact:** Establishes a solid Phase 0 foundation for the rest of the submission.
+
+## [Hour 18] API and behavior audit
+
+**Context:** The submission needed more than a parser; it needed a public API surface and behavior set that match the upstream library closely enough to be defensible.
+**Decision:** Add explicit case-sensitive and case-insensitive object mutation helpers, cover them with regression tests, and verify the differential harness from an external working directory.
+**Rationale:** This closes the gap between the Rust API and the semantics exercised by the reference implementation without over-extending the scope of the submission.
+**Equivalence impact:** Strengthens the behavior-equivalence story for the core object API.

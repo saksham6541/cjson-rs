@@ -7,6 +7,9 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
+[profile.release]
+panic = "abort"
+
 [dependencies]
 libfuzzer-sys = "0.4"
 

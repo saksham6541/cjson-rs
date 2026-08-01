@@ -54,6 +54,10 @@ impl Value {
     }
 
     pub fn replace_item_in_object(&mut self, name: &str, item: Value) -> bool {
+        self.replace_item_in_object_case_insensitive(name, item)
+    }
+
+    pub fn replace_item_in_object_case_sensitive(&mut self, name: &str, item: Value) -> bool {
         match self {
             Self::Object(entries) => {
                 if let Some((_, entry)) = entries.iter_mut().find(|(key, _)| key == name) {
@@ -67,10 +71,48 @@ impl Value {
         }
     }
 
+    pub fn replace_item_in_object_case_insensitive(&mut self, name: &str, item: Value) -> bool {
+        match self {
+            Self::Object(entries) => {
+                if let Some((_, entry)) = entries
+                    .iter_mut()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                {
+                    *entry = item;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
     pub fn delete_item_from_object(&mut self, name: &str) -> bool {
+        self.delete_item_from_object_case_insensitive(name)
+    }
+
+    pub fn delete_item_from_object_case_sensitive(&mut self, name: &str) -> bool {
         match self {
             Self::Object(entries) => {
                 if let Some(index) = entries.iter().position(|(key, _)| key == name) {
+                    entries.remove(index);
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    pub fn delete_item_from_object_case_insensitive(&mut self, name: &str) -> bool {
+        match self {
+            Self::Object(entries) => {
+                if let Some(index) = entries
+                    .iter()
+                    .position(|(key, _)| key.eq_ignore_ascii_case(name))
+                {
                     entries.remove(index);
                     true
                 } else {
