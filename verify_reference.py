@@ -9,5 +9,7 @@ exe = (
 
 samples = ['{"a": [1, 2, 3]}', '{"x":true}', '{"n":null}', '{"s":"hi"}']
 for sample in samples:
-    proc = subprocess.run([str(exe), sample], capture_output=True, text=True)
+    proc = subprocess.run(
+        [str(exe)], input=sample, capture_output=True, text=True
+    )
     print(sample, "rc=", proc.returncode, "stdout=", proc.stdout.strip())

@@ -50,7 +50,7 @@ See [BENCHMARKS.md](BENCHMARKS.md)
 - Track: C → Rust
 - Hardware: ASUS TUF 15, Ryzen 7, 16GB DDR5, RTX 3050
 - OS: Windows 11
-- Repository: https://github.com/saksham17-tech/cjson-rs
+- Repository: https://github.com/saksham6541/cjson-rs
 
 ## How to Run
 

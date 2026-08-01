@@ -1,4 +1,10 @@
-use std::{env, path::PathBuf, process::Command};
+use std::{
+    env,
+    io::Write,
+    path::PathBuf,
+    process::{Command, Stdio},
+    thread,
+};
 
 use crate::{parse, print_unformatted};
 
@@ -24,9 +30,7 @@ pub fn compare_against_c(input: &str) -> Result<String, String> {
     let reference_binary = reference_binary_path();
     ensure_reference_binary(&reference_binary)?;
 
-    let output = Command::new(&reference_binary)
-        .arg(input)
-        .output()
+    let output = run_reference_binary(&reference_binary, input.as_bytes(), &[])
         .map_err(|e| {
             format!(
                 "failed to run C reference binary at {}: {e}",
@@ -56,6 +60,50 @@ pub fn compare_against_c(input: &str) -> Result<String, String> {
             "c accepted but rust rejected: rust_err={rust_err}, c={c_output}"
         )),
     }
+}
+
+/// Runs the C reference binary, writing `input` to its stdin rather than
+/// passing it as a command-line argument.
+///
+/// A CLI argument has a hard length limit on Windows (a few KB up to ~32K
+/// depending on invocation context) that JSON test/fuzz/benchmark inputs can
+/// easily exceed -- a 45KB fixture and a 478KB fixture both failed outright
+/// with `os error 206` (ERROR_FILENAME_EXCED_RANGE) before this fix. Stdin has
+/// no comparable limit on any platform this needs to run on, and this is the
+/// single shared entry point both `compare_against_c` and `bench_main`'s
+/// C-side timing use, so the fix only needs to exist in one place.
+///
+/// Writing happens on a background thread rather than inline before
+/// `wait_with_output()`: for a large enough payload, the child process can
+/// fill its stdout/stderr pipe buffer and block waiting for someone to read
+/// it, while the parent is still blocked writing stdin -- a classic pipe
+/// deadlock. Writing on its own thread while the main thread waits on
+/// `wait_with_output()` (which drains stdout/stderr concurrently) avoids that.
+pub fn run_reference_binary(
+    binary: &PathBuf,
+    input: &[u8],
+    extra_args: &[&str],
+) -> std::io::Result<std::process::Output> {
+    let mut child = Command::new(binary)
+        .args(extra_args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let mut stdin = child.stdin.take().expect("stdin was requested as piped");
+    let input_owned = input.to_vec();
+    let writer = thread::spawn(move || {
+        // Errors here (e.g. the child exits early and closes its stdin
+        // before we finish writing) aren't fatal -- wait_with_output()
+        // below still returns the child's actual output/exit status.
+        let _ = stdin.write_all(&input_owned);
+        // `stdin` drops here, closing the write end so the child sees EOF.
+    });
+
+    let output = child.wait_with_output()?;
+    let _ = writer.join();
+    Ok(output)
 }
 
 fn canonical_json(input: &str) -> String {

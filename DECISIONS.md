@@ -4,7 +4,7 @@
 - Members: Saksham Kaushik, Saksham Mishra, Ayush Rawat
 - Hardware: ASUS TUF 15, Ryzen 7, 16GB DDR5, RTX 3050
 - Track: C → Rust
-- Repository: https://github.com/saksham17-tech/cjson-rs
+- Repository: https://github.com/saksham6541/cjson-rs
 
 ## What We Changed and Why
 
@@ -222,3 +222,49 @@ Rationale: A single shared comparison helper reduces duplication and ensures the
 - Populate `original/cJSON` with the real upstream source snapshot, then run the compatibility harness and verify `target/cjson_test_suite_hash.txt`.
 - If exact invalid UTF-8 equivalence is required, implement the parser over raw bytes instead of `&str`.
 - Re-run benchmarks after the upstream test suite and fixture files are stabilized.
+
+## [Hour 29] Fixed two real bugs surfaced by running the benchmark on Windows
+
+**Context:** Running `cargo run --release --bin bench_main` on Windows produced two broken
+results: every C-side timing read `0.000us` regardless of input, and the `medium`/`large`
+cases failed outright with `os error 206` ("The filename or extension is too long").
+
+**Problem 1 — C-side timings were all zero.** `c_reference_main.c`'s `--bench` mode used
+`clock()` to measure parse/print durations. `clock()`'s resolution on Windows is tied to the
+system tick (commonly ~15.6ms), far coarser than the microsecond-scale operations being timed
+— every measurement rounded down to 0. This wasn't a formatting issue, it made every C-side
+benchmark number meaningless on Windows specifically (Linux's `clock()` has finer resolution
+and wasn't affected the same way).
+
+**Problem 2 — `os error 206` on medium/large inputs.** Both `compare_against_c` (in
+`src/compare.rs`) and `c_timings` (in `src/bin/bench_main.rs`) passed the JSON input to the C
+reference binary as a command-line argument (`Command::new(...).arg(input)`). Windows has a
+hard command-line length limit (a few KB up to ~32K depending on invocation context) that the
+45KB `medium.json` and 478KB `large.json` fixtures both exceeded. This isn't just a benchmark
+problem — `compare_against_c` uses the identical pattern, meaning the differential comparison
+harness itself would fail the same way on any sufficiently large input, on Windows.
+
+**Fix:**
+- `c_reference_main.c` now reads the entire input from stdin instead of `argv[1]`, with no
+  practical size limit. `--bench` is now the only argv flag.
+- Replaced `clock()` with a real monotonic high-resolution timer: `QueryPerformanceCounter` on
+  Windows, `clock_gettime(CLOCK_MONOTONIC)` elsewhere.
+- Added a shared `run_reference_binary()` helper in `src/compare.rs` (now `pub`, reused by
+  `bench_main.rs`) that spawns the C reference binary with piped stdin/stdout/stderr and writes
+  the input on a background thread. The background thread matters: for large payloads, writing
+  stdin synchronously before reading stdout/stderr risks a pipe deadlock if the child fills its
+  output buffer before the parent finishes writing input; `wait_with_output()` on the main
+  thread drains stdout/stderr concurrently with the writer thread, avoiding that.
+- Updated `verify_reference.py` to match (`subprocess.run([exe], input=sample, ...)` instead of
+  `subprocess.run([exe, sample], ...)`).
+
+**Verification:** rebuilt the C reference binary and confirmed directly: small input via stdin
+round-trips correctly in default mode; `--bench` mode now returns real non-zero microsecond
+timings (e.g. `parse_us=5.974 pretty_us=3.095 compact_us=0.634` on a small input); the 478KB
+`large.json` fixture, which previously failed outright, now parses and reports real bench
+timings (`parse_us=5411.676 ...`) via stdin with no length-limit error.
+
+**Equivalence impact:** None on parser/printer behavior — this is entirely reference-harness
+and benchmark-infrastructure plumbing. It does mean prior benchmark numbers captured on
+Windows (if any) that showed `c(...=0.000us...)` should be treated as invalid and re-measured,
+not as evidence C is instant.

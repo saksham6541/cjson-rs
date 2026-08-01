@@ -96,10 +96,7 @@ fn c_timings(input: &str) -> Result<Timings, String> {
     let mut compact_total = 0.0;
 
     for _ in 0..ITERATIONS {
-        let output = Command::new(&reference_binary)
-            .arg(input)
-            .arg("--bench")
-            .output()
+        let output = hackathon::run_reference_binary(&reference_binary, input.as_bytes(), &["--bench"])
             .map_err(|e| format!("failed to run C reference binary: {e}"))?;
 
         if !output.status.success() {
