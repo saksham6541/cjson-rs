@@ -1,3 +1,5 @@
+use crate::{error::ParseError, printer};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Null,
@@ -37,6 +39,30 @@ impl Value {
 
     pub fn object(entries: Vec<(String, Value)>) -> Self {
         Self::Object(entries)
+    }
+
+    pub fn new_object() -> Self {
+        Self::Object(Vec::new())
+    }
+
+    pub fn new_array() -> Self {
+        Self::Array(Vec::new())
+    }
+
+    pub fn new_string(value: &str) -> Self {
+        Self::String(value.to_string())
+    }
+
+    pub fn new_number(value: f64) -> Self {
+        Self::Number(value)
+    }
+
+    pub fn new_bool(value: bool) -> Self {
+        Self::Bool(value)
+    }
+
+    pub fn new_null() -> Self {
+        Self::Null
     }
 
     pub fn is_null(&self) -> bool {
@@ -85,6 +111,14 @@ impl Value {
         }
     }
 
+    pub fn get_array_item(&self, index: usize) -> Option<&Value> {
+        self.array_item(index)
+    }
+
+    pub fn to_string_pretty(&self) -> String {
+        printer::print(self)
+    }
+
     pub fn array_item_mut(&mut self, index: usize) -> Option<&mut Value> {
         match self {
             Self::Array(items) => items.get_mut(index),
@@ -99,6 +133,18 @@ impl Value {
                 true
             }
             _ => false,
+        }
+    }
+
+    pub fn add_to_array(&mut self, item: Value) -> Result<(), ParseError> {
+        match self {
+            Self::Array(items) => {
+                items.push(item);
+                Ok(())
+            }
+            _ => Err(crate::error::ParseError::type_mismatch(
+                "value is not an array",
+            )),
         }
     }
 
@@ -140,6 +186,18 @@ impl Value {
                 true
             }
             _ => false,
+        }
+    }
+
+    pub fn add_to_object(&mut self, name: &str, item: Value) -> Result<(), ParseError> {
+        match self {
+            Self::Object(entries) => {
+                entries.push((name.to_string(), item));
+                Ok(())
+            }
+            _ => Err(crate::error::ParseError::type_mismatch(
+                "value is not an object",
+            )),
         }
     }
 

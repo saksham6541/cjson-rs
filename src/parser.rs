@@ -1,4 +1,4 @@
-use crate::{error::ParseError, value::Value};
+use crate::{error::ParseError, Value};
 
 const NESTING_LIMIT: usize = 1000;
 
