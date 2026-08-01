@@ -15,10 +15,10 @@ The benchmark path was verified with a fresh run of:
 Observed output from the current workspace:
 
 ```text
-small: size=110 parse=0.000s pretty=0.000s compact=0.000s
-medium: size=9533 parse=0.001s pretty=0.001s compact=0.001s
-deep: size=4001 parse=0.001s pretty=0.001s compact=0.001s
-wide: size=2317 parse=0.001s pretty=0.001s compact=0.001s
+small: size=64 parse=49.000µs pretty=47.900µs compact=16.500µs
+medium: size=183 parse=33.200µs pretty=71.000µs compact=43.700µs
+deep: size=203 parse=199.100µs pretty=2.574ms compact=121.900µs
+wide: size=2781 parse=344.200µs pretty=476.800µs compact=406.500µs
 ```
 
 ## Notes

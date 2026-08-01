@@ -33,7 +33,7 @@ impl<'a> Parser<'a> {
 
     fn parse_value(&mut self, depth: usize) -> Result<Value, ParseError> {
         self.skip_whitespace();
-        if depth > NESTING_LIMIT {
+        if depth >= NESTING_LIMIT {
             return Err(ParseError::new("nesting limit exceeded", self.position()));
         }
 
