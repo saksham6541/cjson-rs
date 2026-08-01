@@ -39,3 +39,17 @@
 **Decision:** Keep the manual timing harness for now rather than refactoring to criterion, because the submission already has an end-to-end timing loop and the parser correctness fixes took priority.
 **Rationale:** This avoids introducing more moving parts into the submission while retaining a reproducible, comparative performance report path.
 **Equivalence impact:** Keeps the benchmark output simple and stable for the report without affecting core parser behavior.
+
+## [Hour 12] Differential fuzz harness
+
+**Context:** The submission required a real differential fuzz target rather than a simple panic-only parse smoke test.
+**Decision:** Implement the fuzz target so it feeds each input through the same comparison helper used by the CLI and panics on any real Rust-vs-C divergence.
+**Rationale:** This provides a genuine differential harness and makes the behavior easier to explain in the submission package.
+**Equivalence impact:** Gives the repository a meaningful fuzzing path aligned with the original differential-testing requirement.
+
+## [Hour 14] Kickoff hash
+
+**Context:** The submission package benefits from a clear, self-generated snapshot hash of the original upstream test suite at the time the work began.
+**Decision:** Record the SHA-256 hash of the upstream cJSON test-suite files in [kickoff_hash.txt](kickoff_hash.txt).
+**Rationale:** This is easy for reviewers to verify and demonstrates that the reference snapshot was captured independently at kickoff.
+**Equivalence impact:** Adds traceability without changing parser behavior.
