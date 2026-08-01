@@ -113,3 +113,33 @@ real, compiled upstream binary. Verified end to end:
 DECISIONS.md entry claiming C-reference comparison now rests on a real, reproducible
 oracle instead of an unbuilt binary. Any future entry describing a verification step must
 include the command run and its actual output, not a description of the intended result.
+
+## [Hour 24] Real Rust-vs-C benchmark
+
+**Command run:** `cargo run --release --bin bench_main`
+**Observed output:**
+```
+small:  size=64   rust(parse=1.143us   pretty=3.046us   compact=1.911us)  c(parse=23.400us pretty=6.050us  compact=1.700us)
+medium: size=183  rust(parse=2.439us   pretty=9.034us   compact=5.882us)  c(parse=17.150us pretty=2.800us  compact=1.950us)
+deep:   size=203  rust(parse=9.443us   pretty=171.916us compact=32.457us) c(parse=33.900us pretty=9.300us  compact=3.200us)
+wide:   size=2781 rust(parse=33.536us  pretty=75.388us  compact=57.068us) c(parse=74.000us pretty=30.450us compact=25.450us)
+```
+
+**Context:** The previous benchmark (Hour 22) only timed the Rust side. The contest plan
+requires Rust vs. original C side by side.
+
+**Decision:** Added a `--bench` mode to `c_reference_main.c` that times its own
+`cJSON_Parse` / `cJSON_Print` / `cJSON_PrintUnformatted` calls internally with `clock()` and
+prints machine-readable microsecond output, additively (default invocation behavior is
+unchanged — verified `verify_reference.py` still passes as before). `bench_main` now shells
+out to the reference binary in `--bench` mode alongside the existing in-process Rust timing,
+averaging 20 runs per case per side, and prints both.
+
+**Rationale:** A fair comparison needs the C side's own internal timing, not just
+wall-clock-around-`Command::output()` from the Rust side, which would conflate process-spawn
+overhead with library work. `clock()`-inside-the-binary avoids that conflation for the C
+side; the caveat (its own overhead/resolution limits, especially visible on small inputs) is
+documented in `BENCHMARK.md` rather than glossed over.
+
+**Equivalence impact:** None on parser/printer behavior — this is measurement tooling only.
+`cargo test --test core` re-run after this change: 11/11 passing, unchanged.
