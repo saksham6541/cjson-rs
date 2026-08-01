@@ -2,7 +2,9 @@
 
 ## Environment
 
-- Rust: `cargo run --release --bin bench_main`
+- CPU: Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+- Rust: `rustc 1.99.0-nightly (ad3d0bc14 2026-07-31)`
+- Rust build profile: `--release` (`cargo run --release --bin bench_main`)
 - C compiler: MinGW GCC (`C:\MinGW\bin\gcc.EXE`), `-O2`
 - C reference: upstream `DaveGamble/cJSON` sources under `original/cJSON/`, built via
   [build_c_reference.py](build_c_reference.py)

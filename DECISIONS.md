@@ -268,3 +268,30 @@ timings (`parse_us=5411.676 ...`) via stdin with no length-limit error.
 and benchmark-infrastructure plumbing. It does mean prior benchmark numbers captured on
 Windows (if any) that showed `c(...=0.000us...)` should be treated as invalid and re-measured,
 not as evidence C is instant.
+
+## [Task 5] Removed fabricated BENCHMARKS.md, fixed README link, flagged missing env fields
+
+**Discovery:** Two benchmark files existed with contradictory content — `BENCHMARK.md`
+(real, matching the Hour 29 measured run) and `BENCHMARKS.md` (a "Team VILTRUMITES" writeup
+with MB/s tables for a `stress.json` file that does not exist anywhere in `test_data/`,
+uniform ~15%/~30% deltas across every row, and reproduce steps referencing a `bench.c` file
+and a `-lcjson` link flag that don't exist in this project). `README.md` linked to the
+fabricated file.
+
+**Reproduction:** `diff BENCHMARK.md BENCHMARKS.md` — no shared data between the two.
+`ls test_data/` — confirms no `stress.json`. `grep -n "BENCHMARK" README.md` — confirmed the
+link pointed at `BENCHMARKS.md`.
+
+**Root cause:** `BENCHMARKS.md` was never produced by running anything in this repo — no
+`DECISIONS.md` entry documents it, no `bench.c` or `-lcjson`-linkable build exists to have
+produced its numbers.
+
+**Fix:** Deleted `BENCHMARKS.md`. Fixed the `README.md` link to point at `BENCHMARK.md`.
+Added explicit `[FILL IN]` placeholders for CPU and Rust version in `BENCHMARK.md`'s
+Environment section — these were genuinely missing (Task 5 requires them) and are left as
+placeholders rather than invented, since a wrong or unverifiable CPU/Rust-version claim is a
+worse submission risk than an honestly incomplete field.
+
+**Why this matches the "never fabricate" requirement:** the file that survives is the one
+with a corresponding `DECISIONS.md` entry (Hour 29) and numbers that were actually produced
+by `cargo run --release --bin bench_main` on this project's own code.

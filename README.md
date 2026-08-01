@@ -36,7 +36,7 @@ cargo fuzz run fuzz_target -- -max_total_time=28800
 
 ## Benchmarks
 
-See [BENCHMARKS.md](BENCHMARKS.md)
+See [BENCHMARK.md](BENCHMARK.md)
 
 ## Proof of Equivalence
 
