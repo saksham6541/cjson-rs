@@ -27,5 +27,6 @@ fn main() {
         "small",
         r#"{"name":"Ada","active":true,"items":[1,2,3],"meta":{"score":42}}"#,
     );
-    benchmark("medium", include_str!("../test_data/large.json"));
+    benchmark("medium", include_str!("../test_data/medium.json"));
+    benchmark("large", include_str!("../test_data/large.json"));
 }

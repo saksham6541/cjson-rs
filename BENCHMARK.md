@@ -1,5 +1,13 @@
 # Benchmark report
 
+> **⚠️ Numbers below are stale.** They were captured against the old `test_data/large.json`
+> fixture, which was only 183 bytes despite being labeled "medium." As of [Hour 27 in
+> DECISIONS.md](DECISIONS.md), `test_data/medium.json` (~44KB) and a properly resized
+> `test_data/large.json` (~478KB) now exist, and both benchmark binaries have been updated to
+> use them, including a new `large` case. **Re-run `cargo run --release --bin bench_main`
+> before treating this report as final** — the numbers below have not been regenerated against
+> the corrected fixtures yet.
+
 ## Environment
 
 - Rust: verified against rustc/cargo (edition-2021-compatible build; see note below)

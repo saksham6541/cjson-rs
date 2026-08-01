@@ -231,3 +231,24 @@ the "or document the deliberate improvement" option in §5.
 **Equivalence impact:** Deliberate, logged deviation. Parser accepts `\u0000` escapes (cJSON
 cannot); printer round-trips them via `\u0000` escaping either way. Raw unescaped control
 characters, including NUL, remain rejected in both implementations.
+
+## [Hour 27] Fixed mislabeled benchmark fixtures
+
+**Context:** `test_data/large.json` was 183 bytes — mislabeled as "medium" in
+`bench_main.rs`/`benches/bench.rs`, and not representative of any real medium/large workload.
+BENCHMARK.md already flagged this under Notes as a pre-submission TODO.
+
+**Decision:** Generated `test_data/medium.json` (~44KB, 300 nested objects) and resized
+`test_data/large.json` (~478KB, 3,200 nested objects) with a fixed random seed for
+reproducibility. Updated both benchmark binaries to load `medium.json` for the medium case
+and added a genuine `large` case using the resized `large.json`, rather than reusing one file
+for two size categories.
+
+**Rationale:** Closes the gap flagged in BENCHMARK.md's own Notes section before submission,
+rather than leaving it as an unresolved caveat. A fixed seed keeps the fixture reproducible if
+regenerated.
+
+**Equivalence impact:** No behavior change to parser/printer; benchmark-fixture correctness
+only. **The benchmark numbers in BENCHMARK.md were captured against the old, mislabeled
+183-byte fixture and must be re-run against these new fixtures before being treated as final**
+— see the note at the top of BENCHMARK.md.

@@ -171,7 +171,8 @@ fn benchmark_case(name: &str, input: &str) {
 
 fn main() {
     let small = r#"{"name":"Ada","active":true,"items":[1,2,3],"meta":{"score":42}}"#;
-    let medium = load_fixture("test_data/large.json");
+    let medium = load_fixture("test_data/medium.json");
+    let large = load_fixture("test_data/large.json");
     let deep = "[".to_string() + &"[".repeat(100) + &"1" + &"]".repeat(100) + "]";
     let wide = format!(
         "{{{}}}",
@@ -185,6 +186,7 @@ fn main() {
     for (name, input) in [
         ("small", small),
         ("medium", medium.as_str()),
+        ("large", large.as_str()),
         ("deep", deep.as_str()),
         ("wide", wide.as_str()),
     ] {
