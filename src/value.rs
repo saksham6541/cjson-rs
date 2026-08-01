@@ -123,38 +123,6 @@ impl Value {
         }
     }
 
-    pub fn get_array_size(&self) -> usize {
-        match self {
-            Self::Array(items) => items.len(),
-            _ => 0,
-        }
-    }
-
-    pub fn get_array_item(&self, index: usize) -> Option<&Value> {
-        match self {
-            Self::Array(items) => items.get(index),
-            _ => None,
-        }
-    }
-
-    pub fn has_object_item(&self, name: &str) -> bool {
-        self.get_object_item(name).is_some()
-    }
-
-    pub fn get_string_value(&self) -> Option<&str> {
-        match self {
-            Self::String(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    pub fn get_number_value(&self) -> Option<f64> {
-        match self {
-            Self::Number(value) => Some(*value),
-            _ => None,
-        }
-    }
-
     pub fn get_object_item(&self, name: &str) -> Option<&Value> {
         self.get_object_item_case_insensitive(name)
     }

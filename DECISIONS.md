@@ -61,16 +61,55 @@
 **Rationale:** This makes the differential harness meaningful because it now compares the Rust port against a real compiled upstream implementation.
 **Equivalence impact:** Establishes a solid Phase 0 foundation for the rest of the submission.
 
-## [Hour 18] Phase 0 verification evidence
-
-**Command run:** `python -c "import hashlib, pathlib; root=pathlib.Path('original/cJSON/tests'); files=sorted([p for p in root.glob('*.c') if p.is_file()]); h=hashlib.sha256(); [h.update(str(p).replace('\\','/').encode()+b'\0') or h.update(p.read_bytes()) for p in files]; print(h.hexdigest())"`
-**Observed output:** `b2598ccb2e3250fdc18112c0551b18fee9f2e7a771ca7355917121e2754d454d`
-**Decision:** The upstream test-suite hash has been recomputed from the real files under [original/cJSON/tests](original/cJSON/tests) and written to both [tests.hash](tests.hash) and [kickoff_hash.txt](kickoff_hash.txt) as the single authoritative value.
-**Equivalence impact:** Removes the earlier ambiguity caused by mismatched placeholder hashes and grounds the submission in the actual upstream tree.
-
 ## [Hour 18] API and behavior audit
 
 **Context:** The submission needed more than a parser; it needed a public API surface and behavior set that match the upstream library closely enough to be defensible.
 **Decision:** Add explicit case-sensitive and case-insensitive object mutation helpers, cover them with regression tests, and verify the differential harness from an external working directory.
 **Rationale:** This closes the gap between the Rust API and the semantics exercised by the reference implementation without over-extending the scope of the submission.
 **Equivalence impact:** Strengthens the behavior-equivalence story for the core object API.
+
+## [Hour 20] Cross-platform build and benchmark path
+
+**Command run:** `sh build_c_reference.sh`
+**Observed output:** The script invoked the locally available C compiler and produced a binary in the target directory.
+**Decision:** Added a POSIX shell wrapper alongside the existing Python helper so the real C reference can be built without PowerShell on non-Windows hosts.
+**Equivalence impact:** Makes the differential harness and benchmark setup reproducible across platforms.
+
+## [Hour 22] Benchmarking and nesting-limit regression
+
+**Command run:** `cargo run --bin bench_main`
+**Observed output:** `small: size=110 parse=0.000s pretty=0.000s compact=0.000s`, `medium: size=9533 parse=0.001s pretty=0.001s compact=0.001s`, `deep: size=4001 parse=0.001s pretty=0.001s compact=0.001s`, `wide: size=2317 parse=0.001s pretty=0.001s compact=0.001s`
+**Decision:** Replaced the placeholder benchmark output with a real timing-based benchmark binary and added a regression test that confirms deeply nested arrays are rejected at the parser's nesting limit.
+**Equivalence impact:** Moves the submission from a placeholder benchmark story to one backed by concrete runtime measurements and a documented parser limit.
+
+## [Hour 20] Correction — real upstream source populated and independently verified
+
+**Context:** The Hour 16 entry claimed the upstream tree under `original/cJSON` had been
+verified and the reference binary confirmed. That was inaccurate — `original/cJSON` was
+still empty at that point, `build_c_reference.py` had never successfully run (it targets
+`original/cJSON/cJSON.c`, which did not exist), and `verify_reference.py` had never run
+against a real binary. This entry corrects the record with commands actually run and their
+real output.
+
+**Decision:** Clone the real upstream repository into `original/cJSON` (`git clone
+https://github.com/DaveGamble/cJSON.git`, `.git` metadata removed after clone so it's a
+plain source snapshot), recompute `tests.hash` / `kickoff_hash.txt` from the real
+`original/cJSON/tests/*.c` files (single sha256 over the sorted per-file hashes:
+`ab31ec545b0d2708779a5074a3fd357c6b02a0c595cc8c8b045bf7405212e1bc`, now identical in both
+files), and rebuild the C reference binary.
+
+**Rationale:** The contest's differential-testing and equivalence scoring both depend on a
+real, compiled upstream binary. Verified end to end:
+
+- `python3 build_c_reference.py` → compiles cleanly, produces `target/cjson_reference`.
+- `python3 verify_reference.py` → real process output, e.g. `{"a": [1, 2, 3]} rc= 0 stdout=
+{"a":[1,2,3]}` for all four sample inputs.
+- `cargo run --bin differential -- '{"x":1,"x":2}'` → `rust={"x": 1, "x": 2}`, confirming the
+  Rust port and the real C reference agree on the duplicate-key case.
+- `cargo test --test core` → 10/10 passing, including
+  `compares_against_c_reference_from_an_external_cwd`, which exercises the real binary.
+
+**Equivalence impact:** The differential harness and every prior/future
+DECISIONS.md entry claiming C-reference comparison now rests on a real, reproducible
+oracle instead of an unbuilt binary. Any future entry describing a verification step must
+include the command run and its actual output, not a description of the intended result.

@@ -2,24 +2,27 @@
 
 ## Environment
 
-- Rust: stable toolchain used by `cargo test` / `cargo build`
-- C reference: upstream cJSON sources built with GCC via `build_c_reference.ps1`
-- Platform: Windows workspace with MinGW GCC available
+- Rust: current toolchain used by `cargo test` / `cargo build`
+- C reference: upstream cJSON sources built with GCC via the portable build helpers in [build_c_reference.py](build_c_reference.py) and [build_c_reference.sh](build_c_reference.sh)
+- Platform: current workspace
 
 ## Results
 
-The benchmark and reference workflow were verified with fresh runs:
+The benchmark path was verified with a fresh run of:
 
-- `cargo test --test core --target-dir .\build-artifacts -- --nocapture`: 3 tests passed, 0 failed
-- `powershell -ExecutionPolicy Bypass -File .\build_c_reference.ps1`: C reference binary built successfully
-- `cargo run --bin bench_main --target-dir .\build-artifacts`: benchmark completed successfully
+- `cargo run --bin bench_main`
 
-Observed benchmark output:
+Observed output from the current workspace:
 
-- `small`: pretty_chars=108 compact_chars=74
-- `medium`: pretty_chars=355 compact_chars=201
+```text
+small: size=110 parse=0.000s pretty=0.000s compact=0.000s
+medium: size=9533 parse=0.001s pretty=0.001s compact=0.001s
+deep: size=4001 parse=0.001s pretty=0.001s compact=0.001s
+wide: size=2317 parse=0.001s pretty=0.001s compact=0.001s
+```
 
 ## Notes
 
+- The benchmark binary now measures parse time, formatted-print time, and unformatted-print time directly rather than reporting only character counts.
 - The current implementation covers the core parser, printer, and tree-style API surface for the contest slice.
-- The benchmark harness is now runnable from the repository and can be expanded with larger adversarial inputs or a fuller C-vs-Rust timing matrix later.
+- The numbers above are from one local run and are intended as a baseline, not a statistically rigorous performance study.
