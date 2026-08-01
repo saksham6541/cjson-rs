@@ -295,3 +295,85 @@ worse submission risk than an honestly incomplete field.
 **Why this matches the "never fabricate" requirement:** the file that survives is the one
 with a corresponding `DECISIONS.md` entry (Hour 29) and numbers that were actually produced
 by `cargo run --release --bin bench_main` on this project's own code.
+
+## [Task 2] Extended differential fuzzing — real run, real findings
+
+**Note on tooling:** `cargo fuzz run differential` requires a nightly Rust toolchain. The
+verification environment used for this entry only has stable rustc 1.75 with no way to
+install nightly (no `rustup`, `static.rust-lang.org` unreachable). Rather than fabricate
+`cargo fuzz` statistics, a stopgap driver (`src/bin/fuzz_driver.rs`) was written that calls
+the identical `compare_against_c_bytes` entry point the real libFuzzer target
+(`fuzz/fuzz_targets/differential.rs`) uses, via simple corpus-seeded byte mutation instead of
+libFuzzer's coverage-guided engine. It is weaker at finding deep bugs than real `cargo fuzz`
+would be, but every number below was actually executed, not estimated. **Run `cargo fuzz run
+differential` for real on a machine with nightly Rust before final submission** — that is the
+harness that counts for the Differential Fuzz Survivor bonus, not this one.
+
+**Run command:** `cargo run --release --bin fuzz_driver 5000`
+
+**Real output:**
+```
+=== fuzz_driver summary ===
+iterations executed: 5000
+elapsed: 6.22s
+throughput: 804.5 inputs/sec
+corpus seeds used: 24
+both rejected (no divergence): 3322
+both accepted and matched (no divergence): 1343
+harness errors (binary missing/failed to run, not a real divergence): 0
+REAL DIVERGENCES FOUND: 335
+```
+
+**Triage of the 335 divergences** (all currently "C accepted, Rust rejected" — the reverse
+direction, Rust accepting something C rejects, was not observed in this run):
+
+1. **171 cases — raw control characters (0x00-0x1F) unescaped inside JSON strings.**
+   Independently reproduced and minimized outside the fuzz driver:
+   ```
+   printf '{"a":"x\x18y"}' | ./target/cjson_reference    # rc=0, prints {"a":"x\u0018y"}
+   printf '{"a":"x\x18y"}' | ./target/release/differential  # rust rejects: "control characters are not allowed in strings"
+   ```
+   **Root cause:** cJSON's parser does not reject raw control bytes inside string literals —
+   it accepts them and re-escapes on print (`\u0018` above). The Rust parser treats any raw
+   control byte in a string as a hard parse error. This was not explicitly called out in the
+   original plan's §5 checklist (which covers `\0`/`\u0000` specifically, not the full C0
+   control range), but it's the same category of permissive-parsing behavior as the `\0` item
+   — cJSON is lenient here, Rust currently is not.
+   **Status:** accidental divergence, not yet fixed. Needs a decision: match cJSON's leniency
+   (accept and re-escape raw control bytes on print) or log this as a deliberate, stricter
+   deviation. Given §5's existing precedent (match permissive parsing rather than "improve" it
+   unless logged), leaning toward matching — not implemented yet, flagging for the next pass.
+
+2. **38 cases — cJSON accepts trailing content after a complete JSON value; the Rust parser
+   requires the entire input to be consumed.** Minimized:
+   ```
+   printf 'nullXXXXX' | ./target/cjson_reference       # rc=0, prints null
+   printf 'nullXXXXX' | ./target/release/differential  # rust rejects: "unexpected trailing input at byte 4"
+   ```
+   **Root cause:** `cJSON_Parse` parses one JSON value and stops — it does not require or
+   check that the entire input string was consumed. Anything after the first complete value is
+   silently ignored. This is a well-known, if surprising, cJSON behavior and isn't mentioned
+   in the original plan's §5 checklist at all — a real gap in that checklist, found here rather
+   than assumed.
+   **Status:** accidental divergence, not yet fixed. Needs the same kind of decision as above:
+   match cJSON's "parse-one-value-and-stop" behavior, or log a deliberate deviation toward
+   stricter (and arguably more correct) full-input validation.
+
+3. **126 cases — not yet root-caused.** These show the same shape (`c accepted but rust
+   rejected`) with Rust errors like `expected "` or `unexpected token <byte>`, but on visual
+   inspection the printed C output often looks identical to a known corpus seed with no
+   obvious corruption, which doesn't yet have a confirmed explanation. Working theory: the
+   mutation landed inside a multi-byte UTF-8 sequence, and `compare_against_c_bytes`'s
+   `String::from_utf8_lossy` (applied before the Rust parser sees the input, per the doc
+   comment in `compare.rs`) replaces the corrupted sequence with U+FFFD before parsing, while
+   the raw, uncorrupted bytes go to the C binary unmodified — meaning Rust and C could be
+   looking at genuinely different byte streams by the time they run, not the same input parsed
+   differently. This needs confirmation before it's logged as a real behavioral divergence
+   versus a harness artifact of the lossy-conversion approach itself (which was already a
+   logged, deliberate deviation — see the `compare.rs` doc comment). Not claiming a root cause
+   here without checking it first.
+
+**Fixes performed as part of this task:** none yet — this entry is the discovery pass. Two
+confirmed, reproducible divergences (control characters in strings, trailing input after a
+value) are ready for a fix-or-document decision in the next pass; the third category needs
+root-causing before any fix is attempted.
