@@ -1,4 +1,4 @@
-use crate::value::Value;
+use crate::Value;
 
 pub fn print(value: &Value) -> String {
     print_value(value, true, 0)
@@ -38,7 +38,7 @@ fn print_value(value: &Value, pretty: bool, depth: usize) -> String {
                         .iter()
                         .map(|item| print_value(item, false, depth))
                         .collect::<Vec<_>>()
-                        .join(", ")
+                        .join(",")
                 )
             }
         }
@@ -65,12 +65,12 @@ fn print_value(value: &Value, pretty: bool, depth: usize) -> String {
                     entries
                         .iter()
                         .map(|(key, value)| format!(
-                            "{}: {}",
+                            "{}:{}",
                             format_string(key),
                             print_value(value, false, depth)
                         ))
                         .collect::<Vec<_>>()
-                        .join(", ")
+                        .join(",")
                 )
             }
         }
@@ -80,6 +80,10 @@ fn print_value(value: &Value, pretty: bool, depth: usize) -> String {
 fn format_number(number: f64) -> String {
     if !number.is_finite() {
         return "null".to_string();
+    }
+
+    if number == 0.0 && number.is_sign_negative() {
+        return "-0".to_string();
     }
 
     if number.fract() == 0.0 && number >= i64::MIN as f64 && number <= i64::MAX as f64 {

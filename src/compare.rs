@@ -72,29 +72,51 @@ fn ensure_reference_binary(reference_binary: &PathBuf) -> Result<(), String> {
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let python = env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
     let build_script = manifest_dir.join("build_c_reference.py");
-    let status = Command::new(&python)
-        .arg(&build_script)
-        .current_dir(&manifest_dir)
-        .status()
-        .map_err(|e| format!("failed to launch reference build script: {e}"))?;
 
-    if !status.success() {
-        return Err(format!(
+    let python_candidates = [
+        env::var("PYTHON").ok(),
+        env::var("PYTHON3").ok(),
+        Some("python".to_string()),
+        Some("py".to_string()),
+    ];
+
+    let mut last_err = None;
+    for candidate in python_candidates.into_iter().flatten() {
+        let status = Command::new(&candidate)
+            .arg(&build_script)
+            .current_dir(&manifest_dir)
+            .status();
+
+        match status {
+            Ok(status) if status.success() => {
+                if reference_binary.exists() {
+                    return Ok(());
+                }
+                return Err(format!(
+                    "reference build completed but binary is missing at {}",
+                    reference_binary.display()
+                ));
+            }
+            Ok(status) => {
+                last_err = Some(format!(
+                    "{} failed with exit code {}",
+                    candidate,
+                    status.code().unwrap_or(-1)
+                ));
+            }
+            Err(err) => {
+                last_err = Some(format!("failed to launch {}: {err}", candidate));
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| {
+        format!(
             "failed to build C reference binary via {}",
             build_script.display()
-        ));
-    }
-
-    if !reference_binary.exists() {
-        return Err(format!(
-            "reference build completed but binary is missing at {}",
-            reference_binary.display()
-        ));
-    }
-
-    Ok(())
+        )
+    }))
 }
 
 fn reference_binary_path() -> PathBuf {
