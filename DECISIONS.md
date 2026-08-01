@@ -377,3 +377,32 @@ direction, Rust accepting something C rejects, was not observed in this run):
 confirmed, reproducible divergences (control characters in strings, trailing input after a
 value) are ready for a fix-or-document decision in the next pass; the third category needs
 root-causing before any fix is attempted.
+
+## [Task 3] Expanded compatibility tests for confirmed divergences
+
+**Context:** Task 2 (fuzz_driver) confirmed two reproducible divergences where cJSON is
+more permissive than the Rust parser. Task 3 locks the current (stricter) behaviour into
+`tests/core.rs` so any later decision to match cJSON is a visible test failure rather than
+a silent semantic change.
+
+**Tests added:**
+
+1. `rejects_raw_control_characters_inside_string_literals`
+   - Asserts `parse(r#"{"a":"x\u{0018}y"}"#)` fails with the control-character message.
+   - Covers neighbouring C0 controls (0x01, 0x0A, 0x1F).
+   - Asserts properly escaped forms (`\u0018`, `\n`) still succeed.
+
+2. `rejects_trailing_garbage_after_a_complete_value`
+   - Asserts `parse("nullXXXXX")` fails with "unexpected trailing input".
+   - Covers additional shapes: `true#comment`, `[1,2]extra`, consecutive objects, `42 43`.
+   - Confirms trailing *whitespace* alone is still accepted.
+
+**Decision status (unchanged from Task 2):** neither divergence has been fixed to match
+cJSON. The open choice remains:
+
+- Match cJSON (accept raw controls + stop-after-first-value), or
+- Document as deliberate stricter deviations (RFC 8259 / full-input consumption).
+
+Until that decision is made, the new tests document and enforce the stricter side.
+
+**No parser or printer code was changed in this task.**
