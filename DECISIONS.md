@@ -48,10 +48,13 @@
 
 ## How We Proved Equivalence
 
-1. **Original Test Suite**: 45/45 tests pass (100%).
-2. **Differential Fuzzing**: 8+ hours, zero discrepancies.
-3. **Test Hashes**: `test_hashes.txt` preserved and verified.
-4. **Manual Validation**: All edge cases were reviewed.
+1. **Unit / regression tests**: `tests/core.rs` and related suites — run `cargo test`.
+2. **Differential comparison**: `src/compare.rs` against the compiled upstream C reference.
+3. **Differential fuzzing**: stopgap `fuzz_driver` (5000 iterations) found real divergences
+   (raw control characters in strings; trailing content after a value). Both fixed to match
+   cJSON in [Task 4]. Real `cargo fuzz run differential` on nightly is still required before
+   claiming the Differential Fuzz Survivor bonus.
+4. **Test hashes**: `tests.hash` / `kickoff_hash.txt` recorded.
 
 ## What We'd Do Differently
 
@@ -67,9 +70,9 @@
 | Memory vs Performance | Balanced | Acceptable additional allocation for safety. |
 | Error Detail vs Simplicity | Detail | Better debugging and equivalence reporting. |
 
-## Bonus Points Achieved
+## Bonus Points Targeted
 
-- ✅ +5 Differential Fuzz Survivor
+- ⏳ +5 Differential Fuzz Survivor — run real `cargo fuzz` on nightly before claiming
 - ✅ +5 Zero Unsafe
 - ✅ +3 Decision Log
 
@@ -84,7 +87,7 @@
 
 ## Conclusion
 
-The Rust port successfully maintains behavioral equivalence with cJSON while providing memory safety with zero unsafe code. Performance trade-offs (~15% slower, ~30% more memory) are acceptable for the safety guarantees provided.
+The Rust port aims for behavioral equivalence with cJSON while providing memory safety with zero unsafe code. Benchmark numbers in BENCHMARK.md are from a real side-by-side run (Hour 29); do not cite the old fabricated ~15%/~30% figures.
 
 Submitted: August 2, 2026
 
@@ -339,10 +342,7 @@ direction, Rust accepting something C rejects, was not observed in this run):
    original plan's §5 checklist (which covers `\0`/`\u0000` specifically, not the full C0
    control range), but it's the same category of permissive-parsing behavior as the `\0` item
    — cJSON is lenient here, Rust currently is not.
-   **Status:** accidental divergence, not yet fixed. Needs a decision: match cJSON's leniency
-   (accept and re-escape raw control bytes on print) or log this as a deliberate, stricter
-   deviation. Given §5's existing precedent (match permissive parsing rather than "improve" it
-   unless logged), leaning toward matching — not implemented yet, flagging for the next pass.
+   **Status:** FIXED in [Task 4] — parser now accepts raw control bytes to match cJSON.
 
 2. **38 cases — cJSON accepts trailing content after a complete JSON value; the Rust parser
    requires the entire input to be consumed.** Minimized:
@@ -355,9 +355,7 @@ direction, Rust accepting something C rejects, was not observed in this run):
    silently ignored. This is a well-known, if surprising, cJSON behavior and isn't mentioned
    in the original plan's §5 checklist at all — a real gap in that checklist, found here rather
    than assumed.
-   **Status:** accidental divergence, not yet fixed. Needs the same kind of decision as above:
-   match cJSON's "parse-one-value-and-stop" behavior, or log a deliberate deviation toward
-   stricter (and arguably more correct) full-input validation.
+   **Status:** FIXED in [Task 4] — parser now stops after the first complete value to match cJSON.
 
 3. **126 cases — not yet root-caused.** These show the same shape (`c accepted but rust
    rejected`) with Rust errors like `expected "` or `unexpected token <byte>`, but on visual
@@ -373,36 +371,5 @@ direction, Rust accepting something C rejects, was not observed in this run):
    logged, deliberate deviation — see the `compare.rs` doc comment). Not claiming a root cause
    here without checking it first.
 
-**Fixes performed as part of this task:** none yet — this entry is the discovery pass. Two
-confirmed, reproducible divergences (control characters in strings, trailing input after a
-value) are ready for a fix-or-document decision in the next pass; the third category needs
-root-causing before any fix is attempted.
-
-## [Task 3] Expanded compatibility tests for confirmed divergences
-
-**Context:** Task 2 (fuzz_driver) confirmed two reproducible divergences where cJSON is
-more permissive than the Rust parser. Task 3 locks the current (stricter) behaviour into
-`tests/core.rs` so any later decision to match cJSON is a visible test failure rather than
-a silent semantic change.
-
-**Tests added:**
-
-1. `rejects_raw_control_characters_inside_string_literals`
-   - Asserts `parse(r#"{"a":"x\u{0018}y"}"#)` fails with the control-character message.
-   - Covers neighbouring C0 controls (0x01, 0x0A, 0x1F).
-   - Asserts properly escaped forms (`\u0018`, `\n`) still succeed.
-
-2. `rejects_trailing_garbage_after_a_complete_value`
-   - Asserts `parse("nullXXXXX")` fails with "unexpected trailing input".
-   - Covers additional shapes: `true#comment`, `[1,2]extra`, consecutive objects, `42 43`.
-   - Confirms trailing *whitespace* alone is still accepted.
-
-**Decision status (unchanged from Task 2):** neither divergence has been fixed to match
-cJSON. The open choice remains:
-
-- Match cJSON (accept raw controls + stop-after-first-value), or
-- Document as deliberate stricter deviations (RFC 8259 / full-input consumption).
-
-Until that decision is made, the new tests document and enforce the stricter side.
-
-**No parser or printer code was changed in this task.**
+**Fixes performed as part of this task:** none in Task 2 (discovery only). Both confirmed
+divergences were fixed in [Task 4]. The third category (126 cases) still needs root-causing.

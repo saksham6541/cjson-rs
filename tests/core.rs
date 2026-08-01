@@ -314,3 +314,51 @@ fn cjson_add_item_helpers_reject_incorrect_target_types() {
     assert!(!cJSON_AddItemToObject(&mut scalar, "x", cJSON_CreateNull()));
     assert!(!cJSON_AddItemToArray(&mut scalar, cJSON_CreateNull()));
 }
+
+// --- Compatibility coverage (Task 3 + Task 4) ---
+// These cases were confirmed as divergences by fuzz_driver (Task 2).
+// Task 4 fixed the parser to match cJSON. Tests lock the matched behaviour.
+
+#[test]
+fn accepts_raw_control_characters_inside_string_literals() {
+    // cJSON accepts raw C0 controls (0x00-0x1F) inside strings and re-escapes
+    // them on print (e.g. \u0018). Parser now matches that.
+    let input = "{\"a\":\"x\u{0018}y\"}";
+    let value = parse(input).expect("raw control byte in string must be accepted");
+    let printed = print_unformatted(&value);
+    // Printer must re-escape the control as \u0018
+    assert!(
+        printed.contains("\\u0018") || printed.contains("\\u0018".to_lowercase().as_str()),
+        "expected control to be re-escaped on print, got: {printed}"
+    );
+
+    // Neighbouring controls should also be accepted.
+    for code in [0x01u8, 0x0A, 0x1F] {
+        let s = format!("{{\"k\":\"x{}y\"}}", code as char);
+        assert!(
+            parse(&s).is_ok(),
+            "expected accept for control 0x{code:02x}"
+        );
+    }
+
+    // Properly escaped controls must still be accepted.
+    assert!(parse(r#"{"a":"x\u0018y"}"#).is_ok());
+    assert!(parse(r#"{"a":"line\nbreak"}"#).is_ok());
+}
+
+#[test]
+fn accepts_trailing_content_after_a_complete_value() {
+    // cJSON_Parse stops after the first complete value and ignores trailing
+    // content. Parser now matches that.
+    let value = parse("nullXXXXX").expect("trailing garbage must be ignored, not rejected");
+    assert!(matches!(value, Value::Null));
+
+    assert!(matches!(parse("true#comment").unwrap(), Value::Bool(true)));
+    assert!(matches!(parse("[1,2]extra").unwrap(), Value::Array(_)));
+    assert!(matches!(parse(r#"{"a":1}{"b":2}"#).unwrap(), Value::Object(_)));
+    assert!(matches!(parse("42 43").unwrap(), Value::Number(_)));
+
+    // Trailing whitespace remains fine (and was already).
+    assert!(matches!(parse("true   ").unwrap(), Value::Bool(true)));
+}
+

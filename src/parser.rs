@@ -4,16 +4,11 @@ const NESTING_LIMIT: usize = 1000;
 
 pub fn parse(input: &str) -> Result<Value, ParseError> {
     let mut parser = Parser::new(input);
+    // Match cJSON_Parse: parse one JSON value and stop. Trailing content after
+    // the first complete value is ignored (not an error). See DECISIONS.md
+    // [Task 4] — confirmed by differential fuzz, then fixed to match upstream.
     let value = parser.parse_value(0)?;
-    parser.skip_whitespace();
-    if parser.is_done() {
-        Ok(value)
-    } else {
-        Err(ParseError::new(
-            "unexpected trailing input",
-            parser.position(),
-        ))
-    }
+    Ok(value)
 }
 
 struct Parser<'a> {
@@ -147,9 +142,9 @@ impl<'a> Parser<'a> {
                             // Rust's `String` has no such limitation, so
                             // `\u0000` (codepoint 0) is accepted here and
                             // will round-trip through the printer's
-                            // `\u0000` escaping. A raw, unescaped NUL byte
-                            // is still rejected below via `is_control()`,
-                            // matching JSON's control-character rule.
+                            // `\u0000` escaping. Raw unescaped control
+                            // bytes (including NUL) are also accepted to
+                            // match cJSON — see DECISIONS.md [Task 4].
                             output.push(char::from_u32(codepoint).ok_or_else(|| {
                                 ParseError::new("invalid unicode escape", self.position())
                             })?);
@@ -163,12 +158,10 @@ impl<'a> Parser<'a> {
                     }
                     self.advance();
                 }
-                ch if ch.is_control() => {
-                    return Err(ParseError::new(
-                        "control characters are not allowed in strings",
-                        self.position(),
-                    ));
-                }
+                // Match cJSON: raw C0 control characters (0x00–0x1F) inside
+                // string literals are accepted and re-escaped on print
+                // (printer emits \u00XX). Confirmed divergence from fuzz;
+                // fixed to match upstream — see DECISIONS.md [Task 4].
                 _ => {
                     output.push(ch);
                     self.advance();

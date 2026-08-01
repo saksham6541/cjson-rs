@@ -40,9 +40,10 @@ See [BENCHMARK.md](BENCHMARK.md)
 
 ## Proof of Equivalence
 
-- Original test suite: 45/45 tests pass
-- Differential fuzzing: 8+ hours, zero discrepancies
-- Test hashes preserved in `test_hashes.txt`
+- Core unit tests: see `cargo test`
+- Differential fuzzing: stopgap driver found real divergences (control chars, trailing input) which were fixed to match cJSON — see DECISIONS.md [Task 2]/[Task 4]
+- Real `cargo fuzz run differential` should still be run on nightly before claiming the Differential Fuzz Survivor bonus
+- Test hashes: `tests.hash` / `kickoff_hash.txt`
 
 ## Team and Track
 
