@@ -94,3 +94,25 @@ fn object_mutation_helpers_support_explicit_case_sensitive_lookup() {
     );
     assert!(value.get_object_item_case_sensitive("Name").is_some());
 }
+
+#[test]
+fn exposes_core_array_object_and_scalar_accessors() {
+    let array = Value::array(vec![
+        Value::string("Ada"),
+        Value::number(42.0),
+        Value::bool(true),
+    ]);
+    assert_eq!(array.get_array_size(), 3);
+    assert!(
+        matches!(array.get_array_item(1), Some(Value::Number(n)) if (n - 42.0).abs() < f64::EPSILON)
+    );
+    assert!(array.get_array_item(99).is_none());
+
+    let object = Value::object(vec![("name".into(), Value::string("Ada"))]);
+    assert!(object.has_object_item("name"));
+    assert!(!object.has_object_item("other"));
+
+    assert_eq!(Value::string("Ada").get_string_value(), Some("Ada"));
+    assert_eq!(Value::number(12.5).get_number_value(), Some(12.5));
+    assert_eq!(Value::null().get_string_value(), None);
+}

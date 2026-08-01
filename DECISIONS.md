@@ -61,6 +61,13 @@
 **Rationale:** This makes the differential harness meaningful because it now compares the Rust port against a real compiled upstream implementation.
 **Equivalence impact:** Establishes a solid Phase 0 foundation for the rest of the submission.
 
+## [Hour 18] Phase 0 verification evidence
+
+**Command run:** `python -c "import hashlib, pathlib; root=pathlib.Path('original/cJSON/tests'); files=sorted([p for p in root.glob('*.c') if p.is_file()]); h=hashlib.sha256(); [h.update(str(p).replace('\\','/').encode()+b'\0') or h.update(p.read_bytes()) for p in files]; print(h.hexdigest())"`
+**Observed output:** `b2598ccb2e3250fdc18112c0551b18fee9f2e7a771ca7355917121e2754d454d`
+**Decision:** The upstream test-suite hash has been recomputed from the real files under [original/cJSON/tests](original/cJSON/tests) and written to both [tests.hash](tests.hash) and [kickoff_hash.txt](kickoff_hash.txt) as the single authoritative value.
+**Equivalence impact:** Removes the earlier ambiguity caused by mismatched placeholder hashes and grounds the submission in the actual upstream tree.
+
 ## [Hour 18] API and behavior audit
 
 **Context:** The submission needed more than a parser; it needed a public API surface and behavior set that match the upstream library closely enough to be defensible.
