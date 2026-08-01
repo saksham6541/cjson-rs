@@ -100,3 +100,51 @@ fn rejects_deeply_nested_input_at_the_parser_limit() {
     let input = format!("{}{}{}", "[".repeat(1001), "1", "]".repeat(1001));
     assert!(parse(&input).is_err());
 }
+
+#[test]
+fn supports_array_manipulation_helpers() {
+    let mut value = Value::array(vec![Value::number(1.0), Value::number(3.0)]);
+    assert_eq!(value.array_size(), Some(2));
+    assert!(value.insert_item_in_array(1, Value::number(2.0)));
+    assert!(value.replace_item_in_array(2, Value::number(4.0)));
+    assert_eq!(value.detach_item_from_array(0), Some(Value::number(1.0)));
+    assert_eq!(value.array_item(0), Some(&Value::number(2.0)));
+    assert!(!value.insert_item_in_array(10, Value::null()));
+}
+
+#[test]
+fn supports_object_presence_detach_and_duplicate_helpers() {
+    let mut value = parse(r#"{"Name":1,"other":2}"#).unwrap();
+    let full_duplicate = value.duplicate(true);
+    assert!(value.has_object_item("name"));
+    assert_eq!(
+        value.detach_item_from_object_case_sensitive("Name"),
+        Some(Value::number(1.0))
+    );
+    assert_eq!(
+        value.detach_item_from_object("OTHER"),
+        Some(Value::number(2.0))
+    );
+    assert_eq!(value.duplicate(false), Value::Object(Vec::new()));
+    assert_eq!(
+        full_duplicate,
+        Value::Object(vec![
+            ("Name".to_string(), Value::number(1.0)),
+            ("other".to_string(), Value::number(2.0))
+        ])
+    );
+}
+
+#[test]
+fn supports_type_predicates_and_semantic_comparison() {
+    let left = parse(r#"{"Name":[1,true]}"#).unwrap();
+    let right = parse(r#"{"name":[1,true]}"#).unwrap();
+    assert!(left.is_object());
+    assert!(left.compare(&right, false));
+    assert!(!left.compare(&right, true));
+    assert!(Value::bool(true).is_true());
+    assert!(Value::bool(false).is_false());
+    assert!(Value::null().is_null());
+    assert!(Value::number(1.0).is_number());
+    assert!(Value::string("x").is_string());
+}
