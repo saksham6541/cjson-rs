@@ -1,32 +1,31 @@
 # Benchmark report
 
-> **⚠️ Numbers below are stale.** They were captured against the old `test_data/large.json`
-> fixture, which was only 183 bytes despite being labeled "medium." As of [Hour 27 in
-> DECISIONS.md](DECISIONS.md), `test_data/medium.json` (~44KB) and a properly resized
-> `test_data/large.json` (~478KB) now exist, and both benchmark binaries have been updated to
-> use them, including a new `large` case. **Re-run `cargo run --release --bin bench_main`
-> before treating this report as final** — the numbers below have not been regenerated against
-> the corrected fixtures yet.
-
 ## Environment
 
-- Rust: verified against rustc/cargo (edition-2021-compatible build; see note below)
-- C compiler: GCC 13.3.0, `-O2`
+- Rust: `cargo run --release --bin bench_main`
+- C compiler: MinGW GCC (`C:\MinGW\bin\gcc.EXE`), `-O2`
 - C reference: upstream `DaveGamble/cJSON` sources under `original/cJSON/`, built via
-  [build_c_reference.py](build_c_reference.py) / [build_c_reference.sh](build_c_reference.sh)
-- Platform: Linux x86_64
+  [build_c_reference.py](build_c_reference.py)
+- Platform: Windows (native, PowerShell)
+- Timer used by the C reference binary: `QueryPerformanceCounter` on Windows,
+  `clock_gettime(CLOCK_MONOTONIC)` elsewhere — see [Hour 29 in DECISIONS.md](DECISIONS.md) for
+  why this replaced `clock()` (`clock()`'s ~15.6ms resolution on Windows made every C-side
+  timing read as `0.000us` regardless of input).
 
 ## How this was measured
 
-`cargo run --release --bin bench_main` runs both sides on four inputs (small, medium, deep,
-wide) and reports the **average of 20 runs per case, per implementation**:
+`cargo run --release --bin bench_main` runs both sides on five inputs (small, medium, large,
+deep, wide) and reports the **average of 20 runs per case, per implementation**:
 
 - **Rust**: `std::time::Instant` around in-process calls to `parse`, `print`, and
   `print_unformatted` — no process-spawn overhead.
-- **C**: the reference binary (`c_reference_main.c`) now supports a `--bench` flag that times
-  its own `cJSON_Parse`, `cJSON_Print`, and `cJSON_PrintUnformatted` calls internally with
-  `clock()`, and prints the result as `parse_us=.. pretty_us=.. compact_us=..`. Rust invokes
-  it as a subprocess per run and parses that output.
+- **C**: the reference binary (`c_reference_main.c`) supports a `--bench` flag that times its
+  own `cJSON_Parse`, `cJSON_Print`, and `cJSON_PrintUnformatted` calls internally with a
+  monotonic high-resolution timer (`QueryPerformanceCounter` on Windows,
+  `clock_gettime(CLOCK_MONOTONIC)` elsewhere — not `clock()`, which was too coarse on Windows
+  to measure microsecond-scale operations; see Hour 29 in DECISIONS.md), and prints the result
+  as `parse_us=.. pretty_us=.. compact_us=..`. Rust invokes it as a subprocess per run (input
+  piped via stdin — see Hour 29 — rather than passed as a CLI argument) and parses that output.
 
 **Caveat, stated plainly:** the C timings still include process-spawn overhead per
 invocation (fork/exec, dynamic linking), which the in-process Rust loop does not pay. This
@@ -38,39 +37,44 @@ statistical outlier removal, single machine, single run of the full suite).
 
 ## Results
 
-Observed output from a real run of `cargo run --release --bin bench_main`:
+Observed output from a real run of `cargo run --release --bin bench_main` (Windows, after the
+[Hour 29](DECISIONS.md) stdin/timer fixes — this is the first run where `medium` and `large`
+succeeded at all, and the first where C-side numbers are non-zero):
 
 ```text
 (each number is an average over 20 runs)
-small:  size=64   rust(parse=1.143us   pretty=3.046us   compact=1.911us)  c(parse=23.400us pretty=6.050us  compact=1.700us)
-medium: size=183  rust(parse=2.439us   pretty=9.034us   compact=5.882us)  c(parse=17.150us pretty=2.800us  compact=1.950us)
-deep:   size=203  rust(parse=9.443us   pretty=171.916us compact=32.457us) c(parse=33.900us pretty=9.300us  compact=3.200us)
-wide:   size=2781 rust(parse=33.536us  pretty=75.388us  compact=57.068us) c(parse=74.000us pretty=30.450us compact=25.450us)
+small:  size=64     rust(parse=3.180us     pretty=4.635us     compact=3.680us)     c(parse=25.340us   pretty=20.215us   compact=1.375us)
+medium: size=45272  rust(parse=864.980us   pretty=2136.270us  compact=1564.490us)  c(parse=868.295us   pretty=512.995us  compact=450.615us)
+large:  size=489433 rust(parse=11304.070us pretty=24365.785us compact=17319.475us) c(parse=8402.700us  pretty=5401.460us compact=4920.815us)
+deep:   size=203    rust(parse=13.655us    pretty=402.485us   compact=38.045us)    c(parse=39.235us    pretty=9.110us    compact=2.410us)
+wide:   size=2781   rust(parse=66.600us    pretty=168.680us   compact=138.325us)   c(parse=135.105us   pretty=42.915us   compact=34.195us)
 ```
-
-("medium" here is the `test_data/large.json` fixture, which is 183 bytes despite the name —
-worth renaming the fixture or swapping in an actual ~100KB file if a true "medium" size
-category is wanted for the final submission; see Notes.)
 
 ## Honest commentary
 
-- **C's `clock()`-measured parse is consistently slower than Rust's `Instant`-measured parse**
-  in this run, which on its face looks surprising for hand-rolled C vs. a safety-checked Rust
-  parser. This is very likely an artifact of `clock()` resolution/overhead on very short
-  operations (single-digit-to-tens of microseconds) rather than a real performance
-  difference — `clock()` measures CPU time with coarser granularity than `Instant`, and the
-  first call in a freshly-exec'd process can include page-fault/cache-cold effects that
-  `Instant`'s in-process loop avoids entirely after the first iteration. This should be
-  called out as a measurement-methodology caveat, not presented as "Rust beats C at
-  parsing" without qualification.
-- **Rust's pretty-print on the deeply nested case (171.9us) is the clearest case where Rust
-  is genuinely slower** — nested `Vec`-of-`Value` indentation likely allocates more
-  intermediate `String`s than cJSON's C printer does per level. This is a legitimate,
-  explainable tradeoff (safety/ergonomics vs. allocation count) worth stating as such rather
-  than avoiding.
-- On the "wide" case (200 keys), Rust's compact print (57us) is noticeably slower than C's
-  (25us) — plausibly `Vec<(String, Value)>`-based object lookup/iteration overhead vs. C's
-  linked-list walk; worth profiling if there's time before submission, but not blocking.
+- **On `small`, Rust's parse (3.18us) beats C's (25.34us); on every larger case, C pulls
+  ahead on parse** (e.g. `large`: C 8402.70us vs. Rust 11304.07us). The likely explanation
+  isn't that C parsing gets relatively faster as input grows — it's that Rust's advantage on
+  `small` is dominated by fixed process-spawn overhead that the C side pays once per
+  invocation regardless of input size (the C binary is still spawned as a subprocess per
+  timed call even though its *internal* timing uses a high-resolution timer). That fixed cost
+  is a much larger fraction of the total on a 64-byte input than a 489KB one, which is
+  consistent with the crossover seen here. Treat the `small` numbers as measuring
+  "Rust-in-process vs. C-plus-process-spawn," not a fair comparison of parser code alone.
+- **Rust's pretty-print is the largest and most consistent gap**, worst on `large`
+  (24365.79us vs. C's 5401.46us, roughly 4.5x). This is a real, explainable tradeoff rather
+  than a measurement artifact — the most likely cause is that the `Vec`-based `Value` tree and
+  per-level indentation logic allocate more intermediate `String`s than cJSON's C printer does
+  per nesting level. Not fixed before submission; named here rather than left unexplained.
+- **Compact print shows the same direction, a smaller but still real gap** — `large`:
+  Rust 17319.48us vs. C's 4920.82us, roughly 3.5x. Plausibly the same allocation pattern as
+  pretty-print, just without indentation overhead on top of it.
+- **`deep` (203 bytes, 100 levels of nesting) shows Rust's pretty-print at 402.49us against
+  C's 9.11us** — the largest *relative* gap in the whole table (~44x), even though the input
+  is tiny. This strongly points at a genuine per-recursion-level cost in the Rust printer
+  (allocation or indentation-string construction per level) rather than anything
+  size-proportional — worth profiling first if there's time to optimize, since it's the
+  clearest, most isolated signal in this data.
 
 ## Notes
 
@@ -80,6 +84,13 @@ category is wanted for the final submission; see Notes.)
 - `original/cJSON/` must be populated with the real upstream source before running this
   benchmark; `ensure_reference_binary()` in `bench_main` will attempt to build it via
   `build_c_reference.py` if the binary is missing, but the source tree itself must exist.
-- Before the final submission: run this on the actual target machine (not this sandbox), with
-  a properly-sized "medium" (~100KB) and "large" (~10MB) fixture per the contest plan — the
-  current `test_data/large.json` is 183 bytes and does not represent a real medium-size case.
+- `ensure_reference_binary()` only rebuilds the C reference binary if it doesn't already
+  exist at `target/cjson_reference[.exe]` — it has no way to detect that the *source*
+  (`c_reference_main.c`) changed. If you edit that file, delete the existing binary first
+  (`target/cjson_reference.exe` on Windows) before the next benchmark or comparison run, or
+  it will silently keep using the stale build. This bit us once during development: after the
+  Hour 29 stdin fix, a stale pre-fix binary caused every single case to report
+  `c_error=C reference binary rejected input: parse_error`, because the old binary was still
+  reading from `argv[1]` while the new Rust-side caller was writing to stdin.
+- `test_data/medium.json` (~44KB) and `test_data/large.json` (~478KB) are real, properly-sized
+  fixtures as of Hour 27 — the original 183-byte "medium" mislabeling is resolved.
