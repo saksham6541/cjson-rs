@@ -146,4 +146,33 @@ impl Value {
             _ => None,
         }
     }
+
+    /// Equivalent of cJSON's `valueint`: a 32-bit integer view of a number,
+    /// clamped to `i32::MIN`/`i32::MAX` on overflow rather than widened to a
+    /// larger Rust integer type. cJSON always keeps both `valuedouble` and a
+    /// clamped `valueint` in sync for every parsed number; `Value::Number`
+    /// only stores the `f64`, so this derives the clamped view on demand.
+    /// See DECISIONS.md for why the clamp (not a wider type) was kept.
+    pub fn as_clamped_int(&self) -> Option<i32> {
+        match self {
+            Self::Number(n) => Some(clamp_to_valueint(*n)),
+            _ => None,
+        }
+    }
+}
+
+fn clamp_to_valueint(n: f64) -> i32 {
+    // The parser never produces NaN/Infinity (parse_number only accepts
+    // JSON's numeric grammar), but guard anyway since this is a public API.
+    if !n.is_finite() {
+        return 0;
+    }
+    if n >= i32::MAX as f64 {
+        i32::MAX
+    } else if n <= i32::MIN as f64 {
+        i32::MIN
+    } else {
+        // Truncates toward zero, matching C's `(int)double` cast.
+        n as i32
+    }
 }

@@ -18,14 +18,30 @@ pub fn parse(input: &str) -> Result<Value, ParseError> {
 
 struct Parser<'a> {
     chars: Vec<char>,
+    // byte_offsets[i] is the byte offset of chars[i] in the original input;
+    // byte_offsets[chars.len()] is the total byte length. Needed because
+    // cJSON's `cJSON_GetErrorPtr` reports a *byte* offset into the raw
+    // buffer, but we walk the input as `char`s (see §5: "ideally the same
+    // error position"). Without this, any error after a multibyte UTF-8
+    // character would report the wrong position relative to the C reference.
+    // See DECISIONS.md.
+    byte_offsets: Vec<usize>,
     position: usize,
     _marker: std::marker::PhantomData<&'a str>,
 }
 
 impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Self {
+        let mut chars = Vec::new();
+        let mut byte_offsets = Vec::new();
+        for (byte_idx, ch) in input.char_indices() {
+            byte_offsets.push(byte_idx);
+            chars.push(ch);
+        }
+        byte_offsets.push(input.len());
         Self {
-            chars: input.chars().collect(),
+            chars,
+            byte_offsets,
             position: 0,
             _marker: std::marker::PhantomData,
         }
@@ -124,6 +140,16 @@ impl<'a> Parser<'a> {
                         'u' => {
                             self.advance();
                             let codepoint = self.read_unicode_escape()?;
+                            // Deliberate deviation from cJSON (see §5 and
+                            // DECISIONS.md): cJSON's C strings are
+                            // null-terminated, so `\u0000` can't survive
+                            // round-trip and is effectively unrepresentable.
+                            // Rust's `String` has no such limitation, so
+                            // `\u0000` (codepoint 0) is accepted here and
+                            // will round-trip through the printer's
+                            // `\u0000` escaping. A raw, unescaped NUL byte
+                            // is still rejected below via `is_control()`,
+                            // matching JSON's control-character rule.
                             output.push(char::from_u32(codepoint).ok_or_else(|| {
                                 ParseError::new("invalid unicode escape", self.position())
                             })?);
@@ -284,7 +310,10 @@ impl<'a> Parser<'a> {
         self.position >= self.chars.len()
     }
 
+    /// Byte offset of the current position in the original input, matching
+    /// cJSON's `cJSON_GetErrorPtr` semantics (a raw byte pointer), not a
+    /// char index.
     fn position(&self) -> usize {
-        self.position
+        self.byte_offsets[self.position]
     }
 }

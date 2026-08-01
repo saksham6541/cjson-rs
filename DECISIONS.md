@@ -143,3 +143,91 @@ documented in `BENCHMARK.md` rather than glossed over.
 
 **Equivalence impact:** None on parser/printer behavior — this is measurement tooling only.
 `cargo test --test core` re-run after this change: 11/11 passing, unchanged.
+
+## [Hour 25] Fuzz target was never a real libFuzzer entry point
+
+**Context:** Reviewing the harness against §5/§6 of the plan ahead of the sustained-fuzzing
+phase found that `fuzz/fuzz_targets/differential.rs` was a plain `main()` — it read one
+corpus file or a CLI arg and exited. `libfuzzer-sys` was a declared dependency but
+`libfuzzer_sys::fuzz_target!` was never called, so `cargo fuzz run differential` would not
+have been driven by libFuzzer's mutation engine at all.
+
+**Decision:** Rewrote the file as `#![no_main]` + `fuzz_target!(|data: &[u8]| { ... })`,
+calling the new `compare_against_c_bytes` entry point. Also discovered a second, related bug
+while doing this: the manual CLI harness (`src/bin/differential.rs`) called
+`io::stdin().read_to_string(&mut buffer).unwrap()`, which panics outright on invalid UTF-8 —
+exactly the input class §5 calls out (cJSON passes invalid UTF-8 through permissively).
+Switched it to `read_to_end` over raw bytes, routed through the same
+`compare_against_c_bytes` path, so both the manual harness and the real fuzz target share one
+UTF-8-handling policy instead of two divergent ones.
+
+**Rationale:** Without a real `fuzz_target!`, the entire hours 48–60 sustained-fuzzing phase
+and the Differential Fuzz Survivor bonus were not actually achievable — the harness would
+"run" without ever mutating inputs. The stdin panic would have compounded this: even after
+wiring up real fuzzing, the very first mutated byte sequence with invalid UTF-8 would abort
+the process instead of producing a reportable divergence.
+
+**Equivalence impact:** Deliberate deviation, not a bug fix to parser/printer behavior: since
+`Value`/`parse`/`print` operate on `&str` (valid UTF-8 required), raw invalid-UTF-8 input is
+lossily converted via `String::from_utf8_lossy` before parsing rather than passed through
+byte-for-byte as cJSON does. This means the C and Rust sides can legitimately diverge on
+inputs containing invalid UTF-8 sequences — that divergence class is expected and should be
+triaged as "documented deviation," not "bug," when the fuzzer finds it. A byte-native parser
+rewrite would close this gap fully but is out of scope for the remaining time; noting it here
+as a known limitation rather than silently living with it.
+
+## [Hour 25] Error positions were char-indexed, not byte-indexed
+
+**Context:** `ParseError::position` was set from `Parser::position`, which returned an index
+into the parser's internal `Vec<char>`. cJSON's `cJSON_GetErrorPtr` returns a raw pointer
+into the original byte buffer. These only agree for pure-ASCII input.
+
+**Decision:** `Parser` now also builds a parallel `byte_offsets: Vec<usize>` (one entry per
+char, plus a final entry for total byte length) at construction time via `char_indices()`.
+`position()` now indexes into `byte_offsets` instead of returning the char index directly.
+Internal iteration (`advance`/`peek`/`consume_if`) is untouched and still walks `chars` by
+char index — only the externally-reported position changed.
+
+**Rationale:** This is a §5 equivalence requirement ("ideally the same error position"), and
+it was silently wrong for any input with multibyte UTF-8 before an error location — ASCII-only
+test/fuzz inputs would never have caught it.
+
+**Equivalence impact:** Matches original. No behavior change for ASCII input (char index ==
+byte offset there); fixes error-position divergence for any non-ASCII input preceding a parse
+error.
+
+## [Hour 25] Added a valueint-equivalent clamped integer accessor
+
+**Context:** §5 requires deciding how to handle cJSON's `valueint` (a 32-bit int clamped to
+`INT_MIN`/`INT_MAX` on overflow, kept alongside `valuedouble` for every number). `Value` had
+no integer accessor at all — the decision was implicitly undecided rather than made.
+
+**Decision:** Added `Value::as_clamped_int(&self) -> Option<i32>`, which clamps to
+`i32::MIN`/`i32::MAX` on overflow and truncates toward zero otherwise — matching C's
+`(int)double` cast semantics — rather than widening to `i64`/`i128` to "fix" the overflow
+behavior.
+
+**Rationale:** The plan explicitly warns against silently improving this with a wider Rust
+integer type; the clamp-with-loss behavior is part of cJSON's observable API surface (code
+depending on it for bounds-checking would behave differently against a widened type).
+
+**Equivalence impact:** Matches original clamping semantics exactly for the finite,
+in-range-or-overflowing cases. `Value::Number` still stores the full `f64` as the primary
+representation (matching `valuedouble`); `as_clamped_int` is the derived `valueint` view.
+
+## [Hour 25] Documented, not changed: \u0000 is representable, raw NUL is not
+
+**Context:** §5 asks for an explicit decision on cJSON's inability to represent `\0` /
+`\u0000` in strings (its strings are null-terminated C strings). The parser already handled
+this correctly — `\u0000` escapes parse and round-trip fine (Rust strings aren't
+null-terminated), while a raw, unescaped NUL byte in a string literal is rejected via the
+existing `is_control()` check — but nothing recorded this as a deliberate choice rather than
+an accident.
+
+**Decision:** No behavior change. Added an inline comment at the `\u` escape-handling site in
+`parser.rs` recording this as the deliberate, kept improvement over cJSON's limitation, per
+the "or document the deliberate improvement" option in §5.
+
+**Equivalence impact:** Deliberate, logged deviation. Parser accepts `\u0000` escapes (cJSON
+cannot); printer round-trips them via `\u0000` escaping either way. Raw unescaped control
+characters, including NUL, remain rejected in both implementations.

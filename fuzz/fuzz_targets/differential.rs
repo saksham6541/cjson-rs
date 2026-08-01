@@ -1,23 +1,18 @@
-use std::{fs, path::PathBuf};
+#![no_main]
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let input = args.next().unwrap_or_else(|| {
-        let corpus_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("corpus")
-            .join("differential");
-        let mut files = fs::read_dir(&corpus_dir)
-            .unwrap_or_else(|_| panic!("missing corpus directory: {corpus_dir:?}"))
-            .filter_map(Result::ok)
-            .collect::<Vec<_>>();
-        files.sort_by_key(|entry| entry.path().clone());
-        let first = files
-            .first()
-            .unwrap_or_else(|| panic!("no corpus files found in {corpus_dir:?}"));
-        fs::read_to_string(first.path()).unwrap()
-    });
+use libfuzzer_sys::fuzz_target;
 
-    if let Err(reason) = hackathon::compare_against_c(&input) {
-        panic!("differential mismatch on {input:?}: {reason}");
+// Real libFuzzer entry point. Previously this file was a plain `main()` that
+// only ever read one corpus file and exited — `libfuzzer-sys` was a declared
+// dependency but never actually invoked, so `cargo fuzz run differential`
+// wasn't getting libFuzzer's mutation engine at all. See DECISIONS.md.
+//
+// Takes raw bytes (not `&str`) so libFuzzer's mutator, which has no notion of
+// UTF-8, can hand us arbitrary byte sequences the way it would to a C target.
+// `compare_against_c_bytes` handles the UTF-8-validity gap between Rust
+// strings and cJSON's raw-byte model (see compare.rs doc comment).
+fuzz_target!(|data: &[u8]| {
+    if let Err(reason) = hackathon::compare_against_c_bytes(data) {
+        panic!("differential mismatch on {data:?}: {reason}");
     }
-}
+});

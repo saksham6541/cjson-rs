@@ -2,6 +2,23 @@ use std::{env, path::PathBuf, process::Command};
 
 use crate::{parse, print_unformatted};
 
+/// Byte-oriented entry point for the differential harness (CLI and fuzz target).
+///
+/// cJSON operates on raw bytes and never validates UTF-8 — it's documented to pass
+/// invalid byte sequences through as-is (see §5 of the plan). Rust's `str`/`String`
+/// require valid UTF-8, so a byte-for-byte passthrough isn't directly representable
+/// without rewriting the parser to work over `&[u8]` end to end. As a pragmatic,
+/// logged deviation (see DECISIONS.md), invalid UTF-8 is lossily converted via
+/// `String::from_utf8_lossy` (U+FFFD replacement) before parsing, rather than
+/// crashing the harness or rejecting the input outright. This means the C and Rust
+/// sides may legitimately diverge on inputs containing invalid UTF-8 — that's an
+/// expected, documented divergence class for the differential harness to report,
+/// not a harness bug.
+pub fn compare_against_c_bytes(input: &[u8]) -> Result<String, String> {
+    let text = String::from_utf8_lossy(input);
+    compare_against_c(&text)
+}
+
 pub fn compare_against_c(input: &str) -> Result<String, String> {
     let rust_result = parse(input).map(|value| print_unformatted(&value));
     let reference_binary = reference_binary_path();
