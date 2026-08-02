@@ -44,18 +44,18 @@ Observed output from a real run of `cargo run --release --bin bench_main` (Windo
 succeeded at all, and the first where C-side numbers are non-zero):
 
 ```text
-(each number is an average over 20 runs)
-small:  size=64     rust(parse=3.180us     pretty=4.635us     compact=3.680us)     c(parse=25.340us   pretty=20.215us   compact=1.375us)
-medium: size=45272  rust(parse=864.980us   pretty=2136.270us  compact=1564.490us)  c(parse=868.295us   pretty=512.995us  compact=450.615us)
-large:  size=489433 rust(parse=11304.070us pretty=24365.785us compact=17319.475us) c(parse=8402.700us  pretty=5401.460us compact=4920.815us)
-deep:   size=203    rust(parse=13.655us    pretty=402.485us   compact=38.045us)    c(parse=39.235us    pretty=9.110us    compact=2.410us)
-wide:   size=2781   rust(parse=66.600us    pretty=168.680us   compact=138.325us)   c(parse=135.105us   pretty=42.915us   compact=34.195us)
+(each number is an average over 20 runs — after buffer-based printer rewrite)
+small:  size=64     rust(parse=4.555us     pretty=1.615us     compact=0.940us)     c(parse=12.360us   pretty=8.460us    compact=1.290us)
+medium: size=45272  rust(parse=1001.310us  pretty=287.585us   compact=247.300us)   c(parse=907.030us   pretty=564.625us  compact=467.225us)
+large:  size=489433 rust(parse=11234.090us pretty=3169.020us  compact=2547.555us)  c(parse=8403.550us  pretty=5363.570us compact=4951.495us)
+deep:   size=203    rust(parse=9.705us     pretty=16.420us    compact=2.150us)     c(parse=36.660us    pretty=8.300us    compact=2.330us)
+wide:   size=2781   rust(parse=37.775us    pretty=18.180us    compact=17.965us)    c(parse=141.285us   pretty=44.800us   compact=35.260us)
 ```
 
 ## Honest commentary
 
-- **On `small`, Rust's parse (3.18us) beats C's (25.34us); on every larger case, C pulls
-  ahead on parse** (e.g. `large`: C 8402.70us vs. Rust 11304.07us). The likely explanation
+- **On `small`, Rust's parse (4.56us) beats C's (12.36us); on every larger case, C pulls
+  ahead on parse** (e.g. `large`: C 8403.55us vs. Rust 11234.09us). The likely explanation
   isn't that C parsing gets relatively faster as input grows — it's that Rust's advantage on
   `small` is dominated by fixed process-spawn overhead that the C side pays once per
   invocation regardless of input size (the C binary is still spawned as a subprocess per
@@ -63,16 +63,16 @@ wide:   size=2781   rust(parse=66.600us    pretty=168.680us   compact=138.325us)
   is a much larger fraction of the total on a 64-byte input than a 489KB one, which is
   consistent with the crossover seen here. Treat the `small` numbers as measuring
   "Rust-in-process vs. C-plus-process-spawn," not a fair comparison of parser code alone.
-- **Rust's pretty-print is the largest and most consistent gap**, worst on `large`
-  (24365.79us vs. C's 5401.46us, roughly 4.5x). This is a real, explainable tradeoff rather
+- **Rust's pretty-print was the largest gap before the buffer rewrite**; on the post-rewrite run, Rust is competitive or ahead on medium/large pretty and only ~2× behind on `deep`
+  (3169.02us vs. C's 5363.57us — Rust is now *faster* on pretty-print for large after the buffer rewrite). This is a real, explainable tradeoff rather
   than a measurement artifact — the most likely cause is that the `Vec`-based `Value` tree and
   per-level indentation logic allocate more intermediate `String`s than cJSON's C printer does
   per nesting level. Not fixed before submission; named here rather than left unexplained.
 - **Compact print shows the same direction, a smaller but still real gap** — `large`:
-  Rust 17319.48us vs. C's 4920.82us, roughly 3.5x. Plausibly the same allocation pattern as
+  Rust 2547.56us vs. C's 4951.50us — Rust compact print is now competitive / ahead on large. Plausibly the same allocation pattern as
   pretty-print, just without indentation overhead on top of it.
-- **`deep` (203 bytes, 100 levels of nesting) shows Rust's pretty-print at 402.49us against
-  C's 9.11us** — the largest *relative* gap in the whole table (~44x), even though the input
+- **`deep` (203 bytes, 100 levels of nesting) shows Rust's pretty-print at 16.42us against
+  C's 8.30us** — the largest *relative* gap in the whole table (~2x — down from ~38x before the buffer-based printer rewrite), even though the input
   is tiny. This strongly points at a genuine per-recursion-level cost in the Rust printer
   (allocation or indentation-string construction per level) rather than anything
   size-proportional — worth profiling first if there's time to optimize, since it's the

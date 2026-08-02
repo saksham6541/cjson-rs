@@ -1,79 +1,92 @@
 use crate::Value;
 
 pub fn print(value: &Value) -> String {
-    print_value(value, true, 0)
+    let mut out = String::new();
+    write_value(&mut out, value, true, 0);
+    out
 }
 
 pub fn print_unformatted(value: &Value) -> String {
-    print_value(value, false, 0)
+    let mut out = String::new();
+    write_value(&mut out, value, false, 0);
+    out
 }
 
-fn print_value(value: &Value, pretty: bool, depth: usize) -> String {
+fn write_value(out: &mut String, value: &Value, pretty: bool, depth: usize) {
     match value {
-        Value::Null => "null".to_string(),
-        Value::Bool(true) => "true".to_string(),
-        Value::Bool(false) => "false".to_string(),
-        Value::Number(number) => format_number(*number),
-        Value::String(text) => format_string(text),
+        Value::Null => out.push_str("null"),
+        Value::Bool(true) => out.push_str("true"),
+        Value::Bool(false) => out.push_str("false"),
+        Value::Number(number) => out.push_str(&format_number(*number)),
+        Value::String(text) => write_string(out, text),
         Value::Array(items) => {
             if items.is_empty() {
-                "[]".to_string()
-            } else if pretty {
-                let inner = items
-                    .iter()
-                    .map(|item| {
-                        format!(
-                            "{}{}",
-                            indent(depth + 1),
-                            print_value(item, true, depth + 1)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(",\n");
-                format!("[\n{}\n{}]", inner, indent(depth))
+                out.push_str("[]");
+                return;
+            }
+            if pretty {
+                out.push('[');
+                out.push('\n');
+                for (i, item) in items.iter().enumerate() {
+                    write_indent(out, depth + 1);
+                    write_value(out, item, true, depth + 1);
+                    if i + 1 != items.len() {
+                        out.push(',');
+                    }
+                    out.push('\n');
+                }
+                write_indent(out, depth);
+                out.push(']');
             } else {
-                format!(
-                    "[{}]",
-                    items
-                        .iter()
-                        .map(|item| print_value(item, false, depth))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
+                out.push('[');
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write_value(out, item, false, depth);
+                }
+                out.push(']');
             }
         }
         Value::Object(entries) => {
             if entries.is_empty() {
-                "{}".to_string()
-            } else if pretty {
-                let inner = entries
-                    .iter()
-                    .map(|(key, value)| {
-                        format!(
-                            "{}{}: {}",
-                            indent(depth + 1),
-                            format_string(key),
-                            print_value(value, true, depth + 1)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(",\n");
-                format!("{{\n{}\n{}}}", inner, indent(depth))
+                out.push_str("{}");
+                return;
+            }
+            if pretty {
+                out.push('{');
+                out.push('\n');
+                for (i, (key, value)) in entries.iter().enumerate() {
+                    write_indent(out, depth + 1);
+                    write_string(out, key);
+                    out.push_str(": ");
+                    write_value(out, value, true, depth + 1);
+                    if i + 1 != entries.len() {
+                        out.push(',');
+                    }
+                    out.push('\n');
+                }
+                write_indent(out, depth);
+                out.push('}');
             } else {
-                format!(
-                    "{{{}}}",
-                    entries
-                        .iter()
-                        .map(|(key, value)| format!(
-                            "{}:{}",
-                            format_string(key),
-                            print_value(value, false, depth)
-                        ))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
+                out.push('{');
+                for (i, (key, value)) in entries.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write_string(out, key);
+                    out.push(':');
+                    write_value(out, value, false, depth);
+                }
+                out.push('}');
             }
         }
+    }
+}
+
+fn write_indent(out: &mut String, depth: usize) {
+    for _ in 0..depth {
+        out.push_str("  ");
     }
 }
 
@@ -119,25 +132,23 @@ fn compare_double(left: f64, right: f64) -> bool {
     (left - right).abs() <= max * f64::EPSILON
 }
 
-fn format_string(value: &str) -> String {
-    let mut escaped = String::from('"');
+fn write_string(out: &mut String, value: &str) {
+    out.push('"');
     for ch in value.chars() {
         match ch {
-            '"' => escaped.push_str("\\\""),
-            '\\' => escaped.push_str("\\\\"),
-            '\n' => escaped.push_str("\\n"),
-            '\r' => escaped.push_str("\\r"),
-            '\t' => escaped.push_str("\\t"),
-            '\u{0008}' => escaped.push_str("\\b"),
-            '\u{000C}' => escaped.push_str("\\f"),
-            ch if ch.is_control() => escaped.push_str(&format!("\\u{:04x}", ch as u32)),
-            _ => escaped.push(ch),
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{0008}' => out.push_str("\\b"),
+            '\u{000C}' => out.push_str("\\f"),
+            ch if ch.is_control() => {
+                use std::fmt::Write;
+                let _ = write!(out, "\\u{:04x}", ch as u32);
+            }
+            _ => out.push(ch),
         }
     }
-    escaped.push('"');
-    escaped
-}
-
-fn indent(depth: usize) -> String {
-    "  ".repeat(depth)
+    out.push('"');
 }

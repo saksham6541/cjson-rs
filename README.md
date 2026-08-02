@@ -4,15 +4,15 @@ Team VILTRUMITES: Saksham Kaushik, Saksham Mishra, Ayush Rawat
 
 ## Project Overview
 
-This repository ports the cJSON C library into Rust with a focus on behavioral equivalence, memory safety, and zero unsafe code.
+Safe Rust reimplementation of [cJSON](https://github.com/DaveGamble/cJSON) focused on behavioral equivalence, memory safety, and zero `unsafe` code.
 
 ## Status
 
-- ✅ Core parser complete
-- ✅ All unit tests passing
-- ✅ Compatibility harness in place
-- ✅ Differential fuzzing target configured
-- ✅ Benchmarks documented
+- Core parser and printer complete (`#![deny(unsafe_code)]`)
+- Unit + compatibility tests passing
+- Differential comparison harness against compiled upstream cJSON
+- Side-by-side benchmarks documented in [BENCHMARK.md](BENCHMARK.md)
+- Decision log in [DECISIONS.md](DECISIONS.md)
 
 ## Build
 
@@ -26,52 +26,52 @@ cargo build --release
 cargo test -- --nocapture
 ```
 
+Requires a C compiler (`gcc` / `cc`) so the harness can build `original/cJSON` into `target/cjson_reference`.
+
+## Benchmark
+
+```bash
+cargo run --release --bin bench_main
+```
+
+See [BENCHMARK.md](BENCHMARK.md) for environment, methodology, and measured numbers.
+
 ## Fuzz
 
+Stopgap differential driver (no nightly required):
+
 ```bash
-cd fuzz
+cargo run --release --bin fuzz_driver 5000
+```
+
+Real libFuzzer target (needs nightly + `cargo-fuzz`). **Run from the repo root**, not from inside `fuzz/`:
+
+```bash
 cargo install cargo-fuzz
-cargo fuzz run fuzz_target -- -max_total_time=28800
+cargo +nightly fuzz run differential -- -max_total_time=3600
 ```
 
-## Benchmarks
+## Proof of equivalence (what we can defend)
 
-See [BENCHMARK.md](BENCHMARK.md)
+1. **Unit / regression tests** — `tests/core.rs` (objects, arrays, numbers, Unicode, helpers, nesting limit, control characters, trailing content).
+2. **Differential harness** — `src/compare.rs` runs the same input through Rust and the compiled upstream C reference; both-accept + matching canonical output, or both-reject, counts as pass.
+3. **Fuzz findings fixed to match cJSON** — raw C0 controls in strings and trailing content after a complete value were found by the differential driver and fixed (see DECISIONS.md Task 2 / Task 4).
+4. **Upstream tree** — `original/cJSON/` holds the real DaveGamble/cJSON sources used by the reference binary.
 
-## Proof of Equivalence
+We do **not** claim multi-hour zero-discrepancy libFuzzer runs until `cargo +nightly fuzz run differential` has been executed for the required duration on a nightly toolchain.
 
-- Core unit tests: see `cargo test`
-- Differential fuzzing: stopgap driver found real divergences (control chars, trailing input) which were fixed to match cJSON — see DECISIONS.md [Task 2]/[Task 4]
-- Real `cargo fuzz run differential` should still be run on nightly before claiming the Differential Fuzz Survivor bonus
-- Test hashes: `tests.hash` / `kickoff_hash.txt`
+## Known limitations
 
-## Team and Track
+- Invalid UTF-8 is lossily converted (`from_utf8_lossy`) before the Rust parser sees it; the C side receives raw bytes. Some differential mismatches can be harness artifacts, not parser bugs.
+- Pretty-print is slower than cJSON on deep nesting (allocation vs. C’s lighter printer). Buffer-based printer reduces this; numbers are in BENCHMARK.md.
+- Public C-style wrappers use non-idiomatic names deliberately for API familiarity.
 
-- Team: VILTRUMITES
+## Team
+
 - Track: C → Rust
-- Hardware: ASUS TUF 15, Ryzen 7, 16GB DDR5, RTX 3050
-- OS: Windows 11
+- Hardware: ASUS TUF 15, Ryzen 7, 16GB DDR5, RTX 3050 (dev); benchmark machine: Intel i5-1135G7 (see BENCHMARK.md)
 - Repository: https://github.com/saksham6541/cjson-rs
-
-## How to Run
-
-```bash
-cargo test -- --nocapture
-cargo bench -- --verbose
-```
-
-For fuzzing:
-
-```bash
-cd fuzz
-cargo fuzz run fuzz_target -- -max_total_time=28800
-```
-
-## Notes
-
-- The parser preserves cJSON-compatible behavior for objects, arrays, strings, numbers, booleans, and null.
-- The Rust port uses a safe `Value` enum and avoids unsafe memory operations entirely.
 
 ## License
 
-Same license as cJSON (MIT).
+MIT (same as cJSON).

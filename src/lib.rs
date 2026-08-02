@@ -5,7 +5,7 @@ pub mod error;
 pub mod parser;
 pub mod printer;
 
-pub use compare::{compare_against_c, compare_against_c_bytes};
+pub use compare::{compare_against_c, compare_against_c_bytes, run_reference_binary};
 pub use error::{ParseError, ParseErrorKind};
 pub use parser::parse;
 pub use printer::{print, print_unformatted};

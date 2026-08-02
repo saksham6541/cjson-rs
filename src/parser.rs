@@ -299,9 +299,6 @@ impl<'a> Parser<'a> {
         self.chars.get(self.position).copied()
     }
 
-    fn is_done(&self) -> bool {
-        self.position >= self.chars.len()
-    }
 
     /// Byte offset of the current position in the original input, matching
     /// cJSON's `cJSON_GetErrorPtr` semantics (a raw byte pointer), not a
